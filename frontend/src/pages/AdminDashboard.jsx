@@ -1,522 +1,473 @@
-import React, { useState, useEffect } from 'react';
-import { useStore } from '../store/useStore';
+import React, { useEffect, useState } from 'react';
+import { Plus, Edit, Trash2, Check, DollarSign, Package, Users, ShoppingCart, RefreshCw, X, TrendingUp, AlertTriangle } from 'lucide-react';
 import api from '../services/api';
-import { 
-  TrendingUp, 
-  ShoppingBag, 
-  ClipboardList, 
-  AlertTriangle, 
-  Plus, 
-  Edit3, 
-  Trash2, 
-  X, 
-  Save,
-  CheckCircle2
-} from 'lucide-react';
+
+// Initial local mocks for fallback
+const INITIAL_PRODUCTS = [
+  { id: '1', name: 'Classic Blue Denim Jacket', description: 'A timeless classic denim jacket crafted from premium blue cotton.', price: 89.99, category: 'Apparel', stock: 25, image_url: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=600&auto=format&fit=crop&q=80', featured: true },
+  { id: '2', name: 'Premium Wireless Headphones', description: 'Immerse yourself in rich, high-fidelity sound.', price: 199.99, category: 'Electronics', stock: 15, image_url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=600&auto=format&fit=crop&q=80', featured: true },
+  { id: '3', name: 'Ergonomic Office Chair', description: 'Upgrade your work setup with lumbar mesh support.', price: 249.50, category: 'Furniture', stock: 0, image_url: 'https://images.unsplash.com/photo-1505797149-43b0069ec26b?w=600&auto=format&fit=crop&q=80', featured: false },
+  { id: '4', name: 'Stainless Steel Water Bottle', description: 'Double-walled vacuum insulated water bottle.', price: 24.99, category: 'Accessories', stock: 50, image_url: 'https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=600&auto=format&fit=crop&q=80', featured: true },
+  { id: '5', name: 'Minimalist Leather Wallet', description: 'RFID-blocking card holder wallet.', price: 39.99, category: 'Accessories', stock: 35, image_url: 'https://images.unsplash.com/photo-1627124118974-1d80dd4c9447?w=600&auto=format&fit=crop&q=80', featured: false }
+];
+
+const INITIAL_ORDERS = [
+  { id: 'ord-1', total_amount: 114.98, status: 'shipped', created_at: '2026-07-03T10:00:00Z', items: [{ product_name: 'Classic Denim', quantity: 1, price_at_purchase: 89.99 }] },
+  { id: 'ord-2', total_amount: 199.99, status: 'delivered', created_at: '2026-07-02T12:00:00Z', items: [{ product_name: 'Headphones', quantity: 1, price_at_purchase: 199.99 }] },
+  { id: 'ord-3', total_amount: 24.99, status: 'pending', created_at: '2026-07-04T15:30:00Z', items: [{ product_name: 'Water Bottle', quantity: 1, price_at_purchase: 24.99 }] }
+];
 
 export default function AdminDashboard() {
-  const { formatRupees } = useStore();
-
-  const [stats, setStats] = useState(null);
+  const [activeTab, setActiveTab] = useState('analytics'); // analytics, products, orders
+  
+  // Data States
   const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview', 'orders', 'products'
-  
-  // Product modals states
+
+  // Form / Modal States
   const [showProductModal, setShowProductModal] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(null); // null = Add mode, else object
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [formData, setFormData] = useState({
+    name: '', description: '', price: '', category: 'Apparel', stock: '', image_url: '', featured: false
+  });
   
-  // Product Form states
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [price, setPrice] = useState('');
-  const [originalPrice, setOriginalPrice] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [category, setCategory] = useState('Fruits & Vegetables');
-  const [stock, setStock] = useState('10');
-  const [featured, setFeatured] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
-  const [notification, setNotification] = useState('');
-  const [error, setError] = useState('');
-
-  const fetchStatsAndProducts = async () => {
+  // Fetch all products and orders
+  const loadDashboardData = async () => {
+    setLoading(true);
     try {
-      const statsRes = await api.get('/admin/stats');
-      setStats(statsRes.data);
-
-      const prodRes = await api.get('/products');
-      setProducts(prodRes.data);
+      const prodRes = await api.get('/products', { params: { size: 100 } });
+      setProducts(prodRes.data.items);
+      
+      const orderRes = await api.get('/orders');
+      setOrders(orderRes.data);
     } catch (err) {
-      console.error('Error fetching admin details:', err);
-      setError('Failed to fetch administrator data.');
+      console.warn('Backend offline. Loading local dashboard sandbox mocks.', err);
+      // Retrieve from localStorage or set defaults
+      const storedProds = localStorage.getItem('sandbox_products');
+      if (storedProds) {
+        setProducts(JSON.parse(storedProds));
+      } else {
+        setProducts(INITIAL_PRODUCTS);
+        localStorage.setItem('sandbox_products', JSON.stringify(INITIAL_PRODUCTS));
+      }
+
+      const storedOrders = localStorage.getItem('local_orders');
+      const ordersList = storedOrders ? JSON.parse(storedOrders) : INITIAL_ORDERS;
+      setOrders(ordersList);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStatsAndProducts();
+    loadDashboardData();
   }, []);
 
-  const handleShowNotification = (msg) => {
-    setNotification(msg);
-    setTimeout(() => setNotification(''), 4000);
-  };
-
-  // Order Status update
-  const handleUpdateOrderStatus = async (orderId, newStatus) => {
-    try {
-      await api.put(`/admin/orders/${orderId}/status`, null, {
-        params: { status: newStatus }
-      });
-      handleShowNotification(`Order #${orderId.slice(0, 8)} updated to ${newStatus}`);
-      fetchStatsAndProducts(); // refresh stats & recent orders
-    } catch (err) {
-      setError('Failed to update order status.');
-    }
-  };
-
-  // Open Modal for Add
-  const handleOpenAddModal = () => {
+  const openAddModal = () => {
     setEditingProduct(null);
-    setName('');
-    setDescription('');
-    setPrice('');
-    setOriginalPrice('');
-    setImageUrl('');
-    setCategory('Fruits & Vegetables');
-    setStock('10');
-    setFeatured(false);
+    setFormData({
+      name: '', description: '', price: '', category: 'Apparel', stock: '', image_url: '', featured: false
+    });
+    setErrorMsg('');
     setShowProductModal(true);
   };
 
-  // Open Modal for Edit
-  const handleOpenEditModal = (prod) => {
-    setEditingProduct(prod);
-    setName(prod.name);
-    setDescription(prod.description || '');
-    setPrice(prod.price.toString());
-    setOriginalPrice(prod.original_price.toString());
-    setImageUrl(prod.image_url || '');
-    setCategory(prod.category);
-    setStock(prod.stock.toString());
-    setFeatured(prod.featured);
+  const openEditModal = (product) => {
+    setEditingProduct(product);
+    setFormData({
+      name: product.name,
+      description: product.description || '',
+      price: product.price,
+      category: product.category,
+      stock: product.stock,
+      image_url: product.image_url || '',
+      featured: product.featured || false
+    });
+    setErrorMsg('');
     setShowProductModal(true);
   };
 
-  // Delete product
-  const handleDeleteProduct = async (productId) => {
-    if (!window.confirm('Are you sure you want to delete this product?')) return;
-    try {
-      await api.delete(`/products/${productId}`);
-      handleShowNotification('Product deleted successfully');
-      fetchStatsAndProducts();
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to delete product.');
-    }
-  };
-
-  // Save product (Create or Update)
-  const handleSaveProduct = async (e) => {
+  const handleProductSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setErrorMsg('');
+    setSuccessMsg('');
 
-    const payload = {
-      name,
-      description,
-      price: parseFloat(price),
-      original_price: parseFloat(originalPrice),
-      image_url: imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=500',
-      category,
-      stock: parseInt(stock, 10),
-      featured
+    const formattedPayload = {
+      ...formData,
+      price: parseFloat(formData.price),
+      stock: parseInt(formData.stock, 10)
     };
+
+    if (isNaN(formattedPayload.price) || formattedPayload.price <= 0) {
+      setErrorMsg('Price must be a valid positive number.');
+      return;
+    }
+    if (isNaN(formattedPayload.stock) || formattedPayload.stock < 0) {
+      setErrorMsg('Stock must be a non-negative integer.');
+      return;
+    }
 
     try {
       if (editingProduct) {
-        // Edit mode
-        await api.put(`/products/${editingProduct.id}`, payload);
-        handleShowNotification('Product updated successfully');
+        // Edit API request
+        const res = await api.put(`/products/${editingProduct.id}`, formattedPayload);
+        setProducts(products.map((p) => (p.id === editingProduct.id ? res.data : p)));
+        setSuccessMsg('Product updated successfully!');
       } else {
-        // Add mode
-        await api.post('/products', payload);
-        handleShowNotification('Product created successfully');
+        // Create API request
+        const res = await api.post('/products', formattedPayload);
+        setProducts([res.data, ...products]);
+        setSuccessMsg('Product created successfully!');
       }
       setShowProductModal(false);
-      fetchStatsAndProducts();
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to save product details.');
+      console.warn('API Product update failed. Updating local storage sandbox...', err);
+      // Offline fallback: update in localStorage
+      let updatedList = [...products];
+      if (editingProduct) {
+        const updatedItem = { ...editingProduct, ...formattedPayload };
+        updatedList = products.map((p) => (p.id === editingProduct.id ? updatedItem : p));
+        setSuccessMsg('Product updated locally (offline)');
+      } else {
+        const newItem = {
+          id: Math.random().toString(36).substring(2, 11),
+          created_at: new Date().toISOString(),
+          ...formattedPayload
+        };
+        updatedList = [newItem, ...products];
+        setSuccessMsg('Product created locally (offline)');
+      }
+      setProducts(updatedList);
+      localStorage.setItem('sandbox_products', JSON.stringify(updatedList));
+      setShowProductModal(false);
     }
   };
 
-  // Dummy Chart coordinates mapping (7 days trend)
-  // [Mon, Tue, Wed, Thu, Fri, Sat, Sun]
-  const trendData = [3500, 5200, 4800, 6900, 8400, 7200, 9500];
-  const maxVal = Math.max(...trendData);
-  const chartPoints = trendData.map((val, idx) => {
-    const x = (idx / (trendData.length - 1)) * 440 + 30; // map 0-6 to 30-470 px
-    const y = 130 - (val / maxVal) * 90; // map value to Y coordinate (height 150)
-    return { x, y, val };
+  const handleDeleteProduct = async (productId) => {
+    if (!window.confirm('Are you sure you want to delete this product?')) return;
+    
+    try {
+      await api.delete(`/products/${productId}`);
+      setProducts(products.filter((p) => p.id !== productId));
+      setSuccessMsg('Product deleted successfully!');
+    } catch (err) {
+      console.warn('API Product deletion failed. Deleting from local sandbox...', err);
+      const updatedList = products.filter((p) => p.id !== productId);
+      setProducts(updatedList);
+      localStorage.setItem('sandbox_products', JSON.stringify(updatedList));
+      setSuccessMsg('Product deleted locally (offline)');
+    }
+  };
+
+  const handleUpdateOrderStatus = async (orderId, newStatus) => {
+    try {
+      const res = await api.patch(`/orders/${orderId}/status`, { status: newStatus });
+      setOrders(orders.map((o) => (o.id === orderId ? res.data : o)));
+      setSuccessMsg(`Order marked as ${newStatus}`);
+    } catch (err) {
+      console.warn('API Order status patch failed. Updating local sandbox...', err);
+      const updatedList = orders.map((o) => 
+        o.id === orderId ? { ...o, status: newStatus } : o
+      );
+      setOrders(updatedList);
+      localStorage.setItem('local_orders', JSON.stringify(updatedList));
+      setSuccessMsg(`Order marked as ${newStatus} locally (offline)`);
+    }
+  };
+
+  // Metrics calculations
+  const totalRevenue = orders.reduce((sum, o) => o.status !== 'cancelled' ? sum + Number(o.total_amount) : sum, 0);
+  const totalOrdersCount = orders.length;
+  const outOfStockCount = products.filter((p) => p.stock === 0).length;
+  
+  // Custom SVG Chart Data setup (Sales per category)
+  const categorySales = {};
+  orders.forEach((o) => {
+    if (o.status === 'cancelled') return;
+    if (o.items) {
+      o.items.forEach((item) => {
+        // Guessing category or group
+        const price = Number(item.price_at_purchase) * item.quantity;
+        const matchingProduct = products.find(p => p.name === item.product_name || p.id === item.product_id);
+        const cat = matchingProduct?.category || 'Apparel';
+        categorySales[cat] = (categorySales[cat] || 0) + price;
+      });
+    }
   });
 
-  const pathD = `M ${chartPoints[0].x} ${chartPoints[0].y} ` + 
-    chartPoints.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
-
-  const fillD = `${pathD} L ${chartPoints[chartPoints.length - 1].x} 140 L ${chartPoints[0].x} 140 Z`;
+  const categoriesList = ['Electronics', 'Apparel', 'Accessories', 'Furniture'];
+  const maxSales = Math.max(...categoriesList.map((c) => categorySales[c] || 1), 10);
 
   if (loading) {
     return (
-      <div className="py-12 animate-pulse space-y-8">
-        <div className="h-8 bg-slate-200 dark:bg-slate-800 rounded w-1/3" />
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-24 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
-          ))}
+      <div className="space-y-6 animate-pulse py-8">
+        <div className="h-8 bg-slate-200 dark:bg-slate-800 rounded w-1/4" />
+        <div className="grid grid-cols-4 gap-6">
+          <div className="h-28 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
+          <div className="h-28 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
+          <div className="h-28 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
+          <div className="h-28 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="py-6 space-y-8">
+    <div className="space-y-8">
       
-      {/* Page Header */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
-            Admin Dashboard
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Configure catalogs, process local orders and analyze business health.
+          <h1 className="text-3xl font-extrabold tracking-tight">Admin Control Panel</h1>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">
+            Store inventory metrics, sales performance, and order tracking pipeline.
           </p>
         </div>
-
-        {/* Tab Selection buttons */}
-        <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-800 p-1 rounded-xl bg-white dark:bg-slate-900">
-          {['overview', 'orders', 'products'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-1.5 rounded-lg text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer ${
-                activeTab === tab 
-                  ? 'bg-indigo-600 text-white shadow-sm' 
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
+        <button
+          onClick={loadDashboardData}
+          className="flex items-center gap-1.5 border border-slate-200 dark:border-slate-850 px-4 py-2 text-xs font-semibold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-900"
+        >
+          <RefreshCw size={14} /> Refresh Data
+        </button>
       </div>
 
-      {/* Notifications banner */}
-      {notification && (
-        <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-150 dark:border-emerald-900/40 p-3.5 text-xs font-semibold text-emerald-700 dark:text-emerald-450 flex items-center gap-2">
-          <CheckCircle2 className="h-4.5 w-4.5" />
-          <span>{notification}</span>
+      {successMsg && (
+        <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-650 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50 rounded-xl text-xs flex justify-between items-center">
+          <span className="font-semibold">{successMsg}</span>
+          <button onClick={() => setSuccessMsg('')} className="text-emerald-400 hover:text-emerald-600">
+            <X size={16} />
+          </button>
         </div>
       )}
 
-      {error && (
-        <div className="rounded-xl bg-red-50 dark:bg-red-950/20 border border-red-150 dark:border-red-900/50 p-3.5 text-xs font-semibold text-red-600 dark:text-red-400">
-          {error}
-        </div>
-      )}
+      {/* Tabs */}
+      <div className="flex border-b border-slate-200 dark:border-slate-850 gap-4">
+        <button
+          onClick={() => setActiveTab('analytics')}
+          className={`pb-3 text-sm font-bold border-b-2 transition-all ${
+            activeTab === 'analytics'
+              ? 'border-primary-600 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Overview & Charts
+        </button>
+        <button
+          onClick={() => setActiveTab('products')}
+          className={`pb-3 text-sm font-bold border-b-2 transition-all ${
+            activeTab === 'products'
+              ? 'border-primary-600 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Manage Catalog ({products.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('orders')}
+          className={`pb-3 text-sm font-bold border-b-2 transition-all ${
+            activeTab === 'orders'
+              ? 'border-primary-600 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Order Pipeline ({orders.length})
+        </button>
+      </div>
 
-      {/* 1. OVERVIEW TAB */}
-      {activeTab === 'overview' && stats && (
+      {/* --- ANALYTICS VIEW --- */}
+      {activeTab === 'analytics' && (
         <div className="space-y-8">
           
-          {/* Metrics grids */}
+          {/* Card Metrics Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             
-            {/* Total Revenue */}
-            <div className="p-5 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-2xl flex items-center gap-4 shadow-xs">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-650 dark:text-indigo-400 shrink-0">
-                <TrendingUp className="h-6 w-6" />
+            {/* Revenue */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 flex items-center gap-4 shadow-xs">
+              <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl">
+                <DollarSign size={24} />
               </div>
               <div>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Revenue</span>
-                <span className="font-extrabold text-xl text-slate-900 dark:text-white mt-1 block">
-                  {formatRupees(stats.total_sales)}
-                </span>
+                <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase block tracking-wider">Revenue</span>
+                <span className="text-2xl font-extrabold text-slate-900 dark:text-white">${totalRevenue.toFixed(2)}</span>
               </div>
             </div>
 
             {/* Total Orders */}
-            <div className="p-5 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-2xl flex items-center gap-4 shadow-xs">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-650 dark:text-blue-400 shrink-0">
-                <ClipboardList className="h-6 w-6" />
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 flex items-center gap-4 shadow-xs">
+              <div className="p-3.5 bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400 rounded-xl">
+                <ShoppingCart size={24} />
               </div>
               <div>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Orders</span>
-                <span className="font-extrabold text-xl text-slate-900 dark:text-white mt-1 block">
-                  {stats.total_orders}
-                </span>
+                <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase block tracking-wider">Orders</span>
+                <span className="text-2xl font-extrabold text-slate-900 dark:text-white">{totalOrdersCount}</span>
               </div>
             </div>
 
-            {/* Active Catalog */}
-            <div className="p-5 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-2xl flex items-center gap-4 shadow-xs">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-650 dark:text-emerald-450 shrink-0">
-                <ShoppingBag className="h-6 w-6" />
+            {/* Catalog Items */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 flex items-center gap-4 shadow-xs">
+              <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 text-blue-650 rounded-xl">
+                <Package size={24} />
               </div>
               <div>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Items in Stock</span>
-                <span className="font-extrabold text-xl text-slate-900 dark:text-white mt-1 block">
-                  {stats.active_inventory_count}
-                </span>
+                <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase block tracking-wider">Products</span>
+                <span className="text-2xl font-extrabold text-slate-900 dark:text-white">{products.length}</span>
               </div>
             </div>
 
-            {/* Stock warnings */}
-            <div className="p-5 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-2xl flex items-center gap-4 shadow-xs">
-              <div className={`flex h-12 w-12 items-center justify-center rounded-xl shrink-0 ${
-                stats.stock_alerts.length > 0 
-                  ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-450' 
-                  : 'bg-slate-50 dark:bg-slate-950 text-slate-400'
-              }`}>
-                <AlertTriangle className="h-6 w-6" />
+            {/* Out of Stock warnings */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 flex items-center gap-4 shadow-xs">
+              <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-xl">
+                <AlertTriangle size={24} />
               </div>
               <div>
-                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stock Alerts</span>
-                <span className="font-extrabold text-xl text-slate-900 dark:text-white mt-1 block">
-                  {stats.stock_alerts.length}
-                </span>
+                <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase block tracking-wider">Out of Stock</span>
+                <span className="text-2xl font-extrabold text-slate-900 dark:text-white">{outOfStockCount}</span>
               </div>
             </div>
 
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* SVG Canvas-free Chart (Category sales breakdown) */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xs">
+            <h2 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2 pb-6">
+              <TrendingUp className="text-primary-600" size={20} /> Sales by Category ($ USD)
+            </h2>
             
-            {/* Sales Trend Chart (Pure SVG) */}
-            <div className="lg:col-span-2 p-6 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-3xl space-y-4 shadow-xs">
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                Sales Performance Trend (7 Days)
-              </h3>
-              
-              <div className="relative">
-                <svg viewBox="0 0 500 150" className="w-full h-auto overflow-visible">
-                  {/* Grid Lines */}
-                  <line x1="30" y1="40" x2="470" y2="40" stroke="#f1f5f9" strokeWidth="1" className="dark:stroke-slate-800" />
-                  <line x1="30" y1="85" x2="470" y2="85" stroke="#f1f5f9" strokeWidth="1" className="dark:stroke-slate-800" />
-                  <line x1="30" y1="130" x2="470" y2="130" stroke="#cbd5e1" strokeWidth="1" className="dark:stroke-slate-850" />
+            {/* Native Inline SVG Chart */}
+            <div className="w-full aspect-[2/1] md:aspect-[3/1] relative">
+              <svg className="w-full h-full" viewBox="0 0 600 200">
+                {/* Y-axis gridlines */}
+                <line x1="50" y1="20" x2="550" y2="20" stroke="#e2e8f0" strokeDasharray="4 4" className="dark:stroke-slate-800" />
+                <line x1="50" y1="80" x2="550" y2="80" stroke="#e2e8f0" strokeDasharray="4 4" className="dark:stroke-slate-800" />
+                <line x1="50" y1="140" x2="550" y2="140" stroke="#e2e8f0" strokeDasharray="4 4" className="dark:stroke-slate-800" />
+                <line x1="50" y1="170" x2="550" y2="170" stroke="#94a3b8" className="dark:stroke-slate-700" />
 
-                  {/* Gradient Area Fill */}
-                  <defs>
-                    <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#6366f1" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="#6366f1" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-                  <path d={fillD} fill="url(#chartGradient)" />
+                {/* Render Bars */}
+                {categoriesList.map((cat, idx) => {
+                  const sales = categorySales[cat] || 0;
+                  const barHeight = (sales / maxSales) * 130; // map to svg space (max height 130)
+                  const x = 80 + idx * 120;
+                  const y = 170 - barHeight;
 
-                  {/* Line path */}
-                  <path d={pathD} fill="none" stroke="#6366f1" strokeWidth="3" strokeLinecap="round" />
-
-                  {/* Nodes & Tooltips */}
-                  {chartPoints.map((p, idx) => (
-                    <g key={idx}>
-                      <circle 
-                        cx={p.x} 
-                        cy={p.y} 
-                        r="4.5" 
-                        fill="#6366f1" 
-                        stroke="white" 
-                        strokeWidth="1.5"
-                        className="cursor-pointer hover:r-6 hover:fill-emerald-500 transition-all dark:stroke-slate-900" 
+                  return (
+                    <g key={cat} className="group">
+                      {/* Bar shadow/glow */}
+                      <rect
+                        x={x}
+                        y={y}
+                        width="40"
+                        height={barHeight}
+                        rx="6"
+                        className="fill-primary-500/25 dark:fill-primary-400/25 blur-[1px]"
                       />
-                      {/* Price tag above node */}
-                      <text 
-                        x={p.x} 
-                        y={p.y - 8} 
-                        textAnchor="middle" 
-                        fontSize="8" 
-                        fontWeight="bold" 
-                        fill="#4f46e5"
-                        className="dark:fill-indigo-400 font-sans"
+                      {/* Real Bar */}
+                      <rect
+                        x={x}
+                        y={y}
+                        width="40"
+                        height={barHeight}
+                        rx="6"
+                        className="fill-primary-600 dark:fill-primary-500 cursor-pointer hover:fill-primary-700 transition-all duration-300"
+                      />
+                      
+                      {/* Sales value bubble text */}
+                      <text
+                        x={x + 20}
+                        y={y - 8}
+                        textAnchor="middle"
+                        className="text-[10px] font-bold fill-slate-800 dark:fill-slate-200"
                       >
-                        ₹{p.val}
+                        ${sales.toFixed(0)}
+                      </text>
+
+                      {/* X-axis Label */}
+                      <text
+                        x={x + 20}
+                        y="185"
+                        textAnchor="middle"
+                        className="text-[10px] font-semibold fill-slate-500 dark:fill-slate-400"
+                      >
+                        {cat}
                       </text>
                     </g>
-                  ))}
-
-                  {/* X Axis Labels */}
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, idx) => (
-                    <text
-                      key={day}
-                      x={chartPoints[idx].x}
-                      y="148"
-                      textAnchor="middle"
-                      fontSize="9"
-                      fill="#94a3b8"
-                      className="font-bold"
-                    >
-                      {day}
-                    </text>
-                  ))}
-                </svg>
-              </div>
+                  );
+                })}
+              </svg>
             </div>
-
-            {/* Stock Alert list sidebar */}
-            <div className="p-6 bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-3xl space-y-4 shadow-xs">
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
-                <AlertTriangle className="h-4.5 w-4.5 text-amber-500 shrink-0" />
-                Critical Stock Alerts
-              </h3>
-              
-              {stats.stock_alerts.length === 0 ? (
-                <p className="text-xs text-emerald-600 bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 font-semibold text-center">
-                  All inventory levels healthy.
-                </p>
-              ) : (
-                <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
-                  {stats.stock_alerts.map((alert) => (
-                    <div 
-                      key={alert.product_id}
-                      className="flex justify-between items-center p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-150 dark:border-slate-850 rounded-xl text-xs"
-                    >
-                      <span className="font-semibold text-slate-800 dark:text-slate-350 line-clamp-1 max-w-[150px]">
-                        {alert.name}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${
-                        alert.stock === 0 
-                          ? 'bg-red-50 text-red-600 border border-red-100' 
-                          : 'bg-amber-50 text-amber-700 border border-amber-100'
-                      }`}>
-                        {alert.stock === 0 ? 'Out of Stock' : `${alert.stock} left`}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
           </div>
 
         </div>
       )}
 
-      {/* 2. ORDERS MANAGEMENT TAB */}
-      {activeTab === 'orders' && stats && (
-        <div className="bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-3xl overflow-hidden shadow-xs">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-850">
-            <h3 className="font-bold text-sm text-slate-950 dark:text-white">Active Order Registry</h3>
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-xs">
-              <thead>
-                <tr className="bg-slate-50 dark:bg-slate-955 text-slate-550 border-b border-slate-150 dark:border-slate-850">
-                  <th className="p-4 font-bold">Order ID</th>
-                  <th className="p-4 font-bold">Delivery Address</th>
-                  <th className="p-4 font-bold">Contact</th>
-                  <th className="p-4 font-bold">Grand Total</th>
-                  <th className="p-4 font-bold text-center">Status Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-850">
-                {stats.recent_orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-colors">
-                    <td className="p-4 font-bold text-slate-900 dark:text-white">
-                      #{order.id.slice(0, 8)}
-                    </td>
-                    <td className="p-4 text-slate-600 dark:text-slate-400 max-w-[200px] truncate" title={order.delivery_address}>
-                      {order.delivery_address}
-                    </td>
-                    <td className="p-4 text-slate-700 dark:text-slate-350">{order.contact_phone}</td>
-                    <td className="p-4 font-extrabold text-slate-900 dark:text-white">
-                      {formatRupees(order.total_amount)}
-                    </td>
-                    <td className="p-4 text-center">
-                      <select
-                        value={order.status}
-                        onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
-                        className="px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-350 cursor-pointer"
-                      >
-                        <option value="placed">Placed</option>
-                        <option value="confirmed">Confirmed</option>
-                        <option value="packed">Packed</option>
-                        <option value="shipped">Shipped</option>
-                        <option value="out_for_delivery">Out for Delivery</option>
-                        <option value="delivered">Delivered</option>
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* 3. PRODUCTS TAB (CRUD) */}
+      {/* --- INVENTORY LISTING VIEW --- */}
       {activeTab === 'products' && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div className="flex justify-between items-center">
-            <h3 className="font-bold text-sm text-slate-950 dark:text-white">Product Catalog</h3>
+            <h2 className="font-bold text-lg text-slate-900 dark:text-white">Store Catalog</h2>
             <button
-              onClick={handleOpenAddModal}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-indigo-650 hover:bg-indigo-600 px-4 text-xs font-semibold text-white shadow-sm transition-all cursor-pointer"
+              onClick={openAddModal}
+              className="bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold py-2.5 px-4 rounded-xl flex items-center gap-1.5 shadow-sm active:scale-98"
             >
-              <Plus className="h-4 w-4" />
-              Add New Product
+              <Plus size={16} /> Add Product
             </button>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-3xl overflow-hidden shadow-xs">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-2xl overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-left text-xs">
+              <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 dark:bg-slate-955 text-slate-550 border-b border-slate-150 dark:border-slate-850">
-                    <th className="p-4 font-bold">Product</th>
-                    <th className="p-4 font-bold">Category</th>
-                    <th className="p-4 font-bold">Price</th>
-                    <th className="p-4 font-bold">Stock</th>
-                    <th className="p-4 font-bold text-center">Actions</th>
+                  <tr className="border-b border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-400 uppercase bg-slate-50/50 dark:bg-slate-950/20">
+                    <th className="py-4 px-6">Image</th>
+                    <th className="py-4 px-6">Product details</th>
+                    <th className="py-4 px-6 text-center">Category</th>
+                    <th className="py-4 px-6 text-right">Price</th>
+                    <th className="py-4 px-6 text-center">Stock</th>
+                    <th className="py-4 px-6 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-855">
-                  {products.map((prod) => (
-                    <tr key={prod.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-colors">
-                      <td className="p-4 flex items-center gap-3">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                  {products.map((p) => (
+                    <tr key={p.id} className="hover:bg-slate-50/30 dark:hover:bg-slate-900/30 transition-colors">
+                      <td className="py-4 px-6">
                         <img
-                          src={prod.image_url}
-                          alt={prod.name}
-                          className="h-10 w-10 rounded-lg object-cover bg-slate-50 border border-slate-100"
+                          src={p.image_url || 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?w=100&auto=format&fit=crop&q=80'}
+                          alt={p.name}
+                          className="w-12 h-12 object-cover rounded-lg border border-slate-100 dark:border-slate-800"
                         />
+                      </td>
+                      <td className="py-4 px-6 font-semibold text-slate-950 dark:text-white max-w-[200px] truncate">
                         <div>
-                          <span className="font-bold text-slate-900 dark:text-white block truncate max-w-[150px]">
-                            {prod.name}
-                          </span>
-                          {prod.featured && (
-                            <span className="inline-block text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded uppercase tracking-wider mt-0.5">
+                          <p className="font-bold line-clamp-1">{p.name}</p>
+                          {p.featured && (
+                            <span className="inline-block mt-0.5 text-[8px] font-extrabold uppercase px-1.5 py-0.5 bg-primary-100 dark:bg-primary-950/20 text-primary-600 rounded">
                               Featured
                             </span>
                           )}
                         </div>
                       </td>
-                      <td className="p-4 text-slate-600 dark:text-slate-400">{prod.category}</td>
-                      <td className="p-4 font-extrabold text-slate-900 dark:text-white">
-                        {formatRupees(prod.price)}
+                      <td className="py-4 px-6 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">{p.category}</td>
+                      <td className="py-4 px-6 text-right font-bold text-slate-850 dark:text-slate-200">${Number(p.price).toFixed(2)}</td>
+                      <td className="py-4 px-6 text-center font-bold">
+                        <span className={p.stock === 0 ? 'text-red-500' : p.stock <= 5 ? 'text-amber-500' : 'text-slate-800 dark:text-slate-200'}>
+                          {p.stock}
+                        </span>
                       </td>
-                      <td className="p-4 font-bold text-slate-700 dark:text-slate-350">{prod.stock} units</td>
-                      <td className="p-4 text-center space-x-2">
+                      <td className="py-4 px-6 text-right space-x-2">
                         <button
-                          onClick={() => handleOpenEditModal(prod)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800 text-indigo-650 cursor-pointer"
-                          title="Edit Product"
+                          onClick={() => openEditModal(p)}
+                          className="p-2 border border-slate-200 dark:border-slate-850 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500 hover:text-primary-600"
                         >
-                          <Edit3 className="h-4 w-4" />
+                          <Edit size={14} />
                         </button>
                         <button
-                          onClick={() => handleDeleteProduct(prod.id)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 dark:border-slate-850 hover:bg-red-50 dark:hover:bg-red-950/20 text-red-500 cursor-pointer"
-                          title="Delete Product"
+                          onClick={() => handleDeleteProduct(p.id)}
+                          className="p-2 border border-slate-200 dark:border-slate-850 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/20 text-slate-400 hover:text-red-500"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 size={14} />
                         </button>
                       </td>
                     </tr>
@@ -528,142 +479,202 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* PRODUCT CREATION/UPDATE MODAL */}
+      {/* --- ORDER PIPELINE VIEW --- */}
+      {activeTab === 'orders' && (
+        <div className="space-y-6">
+          <h2 className="font-bold text-lg text-slate-900 dark:text-white">Store Order Pipeline</h2>
+
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 rounded-2xl overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-slate-800 text-xs font-bold text-slate-400 uppercase bg-slate-50/50 dark:bg-slate-950/20">
+                    <th className="py-4 px-6">Order ID</th>
+                    <th className="py-4 px-6">Created date</th>
+                    <th className="py-4 px-6 text-right">Amount</th>
+                    <th className="py-4 px-6 text-center">Status</th>
+                    <th className="py-4 px-6 text-right">Progress Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-sm">
+                  {orders.map((o) => {
+                    const isCancelled = o.status === 'cancelled';
+                    return (
+                      <tr key={o.id} className="hover:bg-slate-50/30 dark:hover:bg-slate-900/30 transition-colors">
+                        <td className="py-4 px-6 font-mono text-xs font-bold select-all">
+                          #{o.id.substring(0, 8)}
+                        </td>
+                        <td className="py-4 px-6 text-xs text-slate-500 font-medium">
+                          {new Date(o.created_at).toLocaleString()}
+                        </td>
+                        <td className="py-4 px-6 text-right font-extrabold text-slate-850 dark:text-slate-200">
+                          ${Number(o.total_amount).toFixed(2)}
+                        </td>
+                        <td className="py-4 px-6 text-center">
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                            isCancelled
+                              ? 'bg-red-50 dark:bg-red-950/20 text-red-650'
+                              : o.status === 'delivered'
+                              ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-650'
+                              : 'bg-primary-50 dark:bg-primary-950/20 text-primary-600'
+                          }`}>
+                            {o.status}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6 text-right">
+                          {!isCancelled ? (
+                            <select
+                              value={o.status}
+                              onChange={(e) => handleUpdateOrderStatus(o.id, e.target.value)}
+                              className="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-1.5 text-xs font-semibold focus:outline-hidden cursor-pointer"
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="processing">Processing</option>
+                              <option value="shipped">Shipped</option>
+                              <option value="delivered">Delivered</option>
+                              <option value="cancelled">Cancel Order</option>
+                            </select>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-bold italic">Order Cancelled</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- ADD / EDIT PRODUCT MODAL --- */}
       {showProductModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-          <div className="bg-white dark:bg-slate-900 border border-slate-150 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div onClick={() => setShowProductModal(false)} className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs animate-fadeIn" />
+          
+          <div className="relative w-full max-w-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-6 overflow-hidden animate-slideUp max-h-[90vh] overflow-y-auto">
             
-            {/* Modal Title */}
-            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-850 pb-3">
-              <h3 className="font-display font-extrabold text-base text-slate-900 dark:text-white">
-                {editingProduct ? 'Edit Catalog Item' : 'Add New Catalog Item'}
+            <div className="flex justify-between items-center pb-4 mb-4 border-b border-slate-100 dark:border-slate-850">
+              <h3 className="font-extrabold text-lg">
+                {editingProduct ? 'Edit Product details' : 'Add New Product'}
               </h3>
-              <button onClick={() => setShowProductModal(false)} className="text-slate-400 hover:text-slate-655">
-                <X className="h-5 w-5" />
+              <button onClick={() => setShowProductModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveProduct} className="space-y-4 text-xs">
+            {errorMsg && (
+              <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 text-red-650 border border-red-200 rounded-xl text-xs">
+                {errorMsg}
+              </div>
+            )}
+
+            <form onSubmit={handleProductSubmit} className="space-y-4 text-xs font-semibold text-slate-500">
               
-              {/* Product Name */}
               <div>
-                <label className="block font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Product Name</label>
+                <label className="block uppercase tracking-wider mb-1.5">Product Name</label>
                 <input
                   type="text"
                   required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Organic Strawberries (250g)"
-                  className="w-full mt-2 h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 focus:border-indigo-500 outline-none text-white"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g. Mechanical Gaming Keyboard"
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 px-3 focus:outline-hidden focus:border-primary-500 text-slate-850 dark:text-slate-200"
                 />
               </div>
 
-              {/* Category selector */}
               <div>
-                <label className="block font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Category</label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full mt-2 h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 focus:border-indigo-500 outline-none text-white"
-                >
-                  <option value="Fruits & Vegetables">Fruits & Vegetables</option>
-                  <option value="Dairy">Dairy</option>
-                  <option value="Bakery">Bakery</option>
-                </select>
+                <label className="block uppercase tracking-wider mb-1.5">Description</label>
+                <textarea
+                  rows={3}
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Details, utility specifications, key highlights..."
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 px-3 focus:outline-hidden focus:border-primary-500 text-slate-850 dark:text-slate-200"
+                />
               </div>
 
-              {/* Pricing & Stock */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Price (₹)</label>
+                  <label className="block uppercase tracking-wider mb-1.5">Category</label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 px-3 focus:outline-hidden text-slate-850 dark:text-slate-200"
+                  >
+                    <option value="Apparel">Apparel</option>
+                    <option value="Electronics">Electronics</option>
+                    <option value="Furniture">Furniture</option>
+                    <option value="Accessories">Accessories</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block uppercase tracking-wider mb-1.5">Featured Item</label>
+                  <div className="flex items-center h-10 border border-slate-200 dark:border-slate-800 rounded-xl px-3 bg-slate-50/50 dark:bg-slate-900">
+                    <input
+                      type="checkbox"
+                      checked={formData.featured}
+                      onChange={(e) => setFormData({ ...formData, featured: e.target.checked })}
+                      className="w-4 h-4 text-primary-600 rounded"
+                    />
+                    <span className="ml-2 font-medium text-slate-600">Promote to Hero</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block uppercase tracking-wider mb-1.5">Unit Price ($)</label>
                   <input
                     type="number"
                     step="0.01"
                     required
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    placeholder="120"
-                    className="w-full mt-2 h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 focus:border-indigo-500 outline-none text-white"
+                    value={formData.price}
+                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                    placeholder="99.99"
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 px-3 focus:outline-hidden focus:border-primary-500 text-slate-850 dark:text-slate-200"
                   />
                 </div>
+
                 <div>
-                  <label className="block font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Original (₹)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={originalPrice}
-                    onChange={(e) => setOriginalPrice(e.target.value)}
-                    placeholder="150"
-                    className="w-full mt-2 h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 focus:border-indigo-500 outline-none text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Stock Count</label>
+                  <label className="block uppercase tracking-wider mb-1.5">Inventory Stock</label>
                   <input
                     type="number"
                     required
-                    value={stock}
-                    onChange={(e) => setStock(e.target.value)}
-                    placeholder="20"
-                    className="w-full mt-2 h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 focus:border-indigo-500 outline-none text-white"
+                    value={formData.stock}
+                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                    placeholder="25"
+                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 px-3 focus:outline-hidden focus:border-primary-500 text-slate-850 dark:text-slate-200"
                   />
                 </div>
               </div>
 
-              {/* Image URL */}
               <div>
-                <label className="block font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Image URL</label>
+                <label className="block uppercase tracking-wider mb-1.5">Image URL</label>
                 <input
                   type="url"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://unsplash.com/..."
-                  className="w-full mt-2 h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 focus:border-indigo-500 outline-none text-white"
+                  value={formData.image_url}
+                  onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                  placeholder="https://images.unsplash.com/..."
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 px-3 focus:outline-hidden focus:border-primary-500 text-slate-850 dark:text-slate-200"
                 />
               </div>
 
-              {/* Description */}
-              <div>
-                <label className="block font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Description</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows="3"
-                  placeholder="Details about product sourcing or weight..."
-                  className="w-full mt-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 focus:border-indigo-500 outline-none text-white"
-                />
-              </div>
-
-              {/* Featured Checkbox */}
-              <label className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={featured}
-                  onChange={(e) => setFeatured(e.target.checked)}
-                  className="accent-indigo-650 h-4.5 w-4.5"
-                />
-                <div>
-                  <span className="block font-bold text-xs text-slate-900 dark:text-white">Feature on Landing Page</span>
-                  <span className="block text-[10px] text-slate-400">Displays product inside the 'Featured Local Picks' slider grid.</span>
-                </div>
-              </label>
-
-              {/* Save actions */}
-              <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-850">
+              <div className="pt-4 flex gap-3">
                 <button
                   type="button"
                   onClick={() => setShowProductModal(false)}
-                  className="flex h-10 flex-1 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-850 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-50 transition-colors"
+                  className="flex-1 border border-slate-200 dark:border-slate-800 py-3 rounded-xl font-bold hover:bg-slate-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white shadow-sm transition-all"
+                  className="flex-1 bg-primary-600 text-white py-3 rounded-xl font-bold hover:bg-primary-700 transition-colors shadow-sm"
                 >
-                  <Save className="h-4 w-4" />
-                  Save Changes
+                  Save Product
                 </button>
               </div>
 

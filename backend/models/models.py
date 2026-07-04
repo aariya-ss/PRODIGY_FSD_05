@@ -1,71 +1,95 @@
-import datetime
 import uuid
-from sqlalchemy import String, Float, Integer, Boolean, DateTime, ForeignKey, Uuid
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from datetime import datetime
+from sqlalchemy import Column, String, Integer, Numeric, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy.orm import relationship
+from sqlalchemy.types import TypeDecorator, CHAR
+from sqlalchemy.dialects.postgresql import UUID as pgUUID
+
 from backend.database.connection import Base
+
+class GUID(TypeDecorator):
+    """Platform-independent GUID type.
+    Uses PostgreSQL's UUID type, otherwise uses CHAR(36), storing as string.
+    """
+    impl = CHAR
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(pgUUID(as_uuid=True))
+        else:
+            return dialect.type_descriptor(CHAR(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        if dialect.name == 'postgresql':
+            return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+        else:
+            return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        if isinstance(value, uuid.UUID):
+            return value
+        return uuid.UUID(value)
 
 class Profile(Base):
     __tablename__ = "profiles"
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    phone: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
-    full_name: Mapped[str] = mapped_column(String, nullable=True)
-    avatar_url: Mapped[str] = mapped_column(String, nullable=True)
-    role: Mapped[str] = mapped_column(String, default="customer")  # 'customer' or 'admin'
-    address: Mapped[str] = mapped_column(String, nullable=True)
-    city: Mapped[str] = mapped_column(String, nullable=True)
-    pincode: Mapped[str] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=datetime.datetime.utcnow
-    )
+    id = Column(GUID, primary_key=True) # Set explicitly from Supabase Auth ID
+    full_name = Column(String(255), nullable=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    phone = Column(String(50), nullable=True)
+    address = Column(Text, nullable=True)
+    role = Column(String(50), default="customer") # 'customer' or 'admin'
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
-    orders: Mapped[list["Order"]] = relationship("Order", back_populates="user")
+    # Relationships
+    orders = relationship("Order", back_populates="user", cascade="all, delete-orphan")
 
 
 class Product(Base):
     __tablename__ = "products"
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    description: Mapped[str] = mapped_column(String, nullable=True)
-    price: Mapped[float] = mapped_column(Float, nullable=False)
-    original_price: Mapped[float] = mapped_column(Float, nullable=False)
-    image_url: Mapped[str] = mapped_column(String, nullable=True)
-    category: Mapped[str] = mapped_column(String, index=True, nullable=False)
-    stock: Mapped[int] = mapped_column(Integer, default=0)
-    featured: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=datetime.datetime.utcnow
-    )
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    price = Column(Numeric(10, 2), nullable=False)
+    category = Column(String(100), nullable=False, index=True)
+    stock = Column(Integer, default=0, nullable=False)
+    image_url = Column(Text, nullable=True)
+    featured = Column(Boolean, default=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
-    order_items: Mapped[list["OrderItem"]] = relationship("OrderItem", back_populates="product")
+    # Relationships
+    order_items = relationship("OrderItem", back_populates="product")
 
 
 class Order(Base):
     __tablename__ = "orders"
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
-    status: Mapped[str] = mapped_column(String, default="placed")  # placed, confirmed, packed, shipped, out_for_delivery, delivered
-    total_amount: Mapped[float] = mapped_column(Float, nullable=False)
-    delivery_address: Mapped[str] = mapped_column(String, nullable=False)
-    contact_phone: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime, default=datetime.datetime.utcnow
-    )
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    user_id = Column(GUID, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    total_amount = Column(Numeric(10, 2), nullable=False)
+    status = Column(String(50), default="pending") # 'pending', 'processing', 'shipped', 'delivered', 'cancelled'
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
 
-    user: Mapped["Profile"] = relationship("Profile", back_populates="orders")
-    items: Mapped[list["OrderItem"]] = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
+    # Relationships
+    user = relationship("Profile", back_populates="orders")
+    items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 
 
 class OrderItem(Base):
     __tablename__ = "order_items"
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    order_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
-    product_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("products.id", ondelete="RESTRICT"), nullable=False)
-    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
-    price_at_purchase: Mapped[float] = mapped_column(Float, nullable=False)
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    order_id = Column(GUID, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(GUID, ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
+    quantity = Column(Integer, nullable=False)
+    price_at_purchase = Column(Numeric(10, 2), nullable=False)
 
-    order: Mapped["Order"] = relationship("Order", back_populates="items")
-    product: Mapped["Product"] = relationship("Product", back_populates="order_items")
+    # Relationships
+    order = relationship("Order", back_populates="items")
+    product = relationship("Product", back_populates="order_items")

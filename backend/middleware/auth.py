@@ -1,85 +1,151 @@
 import os
-import datetime
-from typing import Optional
+import uuid
 import jwt
-from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import HTTPException, Security, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-
 from backend.database.connection import get_db
 from backend.models.models import Profile
 
-SECRET_KEY = os.getenv("JWT_SECRET", "supersecretkey_smartbuy_platform_2026")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+security = HTTPBearer()
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/verify", auto_error=False)
+# Retrieve JWT secret from environments
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "super-secret-supabase-jwt-key-change-me-in-production-12345")
 
-def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] = None):
-    to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.datetime.utcnow() + datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
-
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> Profile:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    if not token:
-        raise credentials_exception
+def get_token_payload(credentials: HTTPAuthorizationCredentials = Security(security)) -> dict:
+    """
+    Decodes the Supabase JWT.
+    Supports a mock token format for local testing without Supabase:
+    Format: 'mock-{uuid}:{role}:{email}'
+    """
+    token = credentials.credentials
+    
+    # Check for mock token bypass for easier local development
+    if token.startswith("mock-"):
+        try:
+            parts = token.split(":")
+            # parts[0] is mock-{uuid}
+            user_uuid = parts[0].replace("mock-", "")
+            role = parts[1] if len(parts) > 1 else "customer"
+            email = parts[2] if len(parts) > 2 else f"user-{user_uuid[:8]}@example.com"
+            
+            # Verify valid UUID format
+            uuid.UUID(user_uuid)
+            
+            return {
+                "sub": user_uuid,
+                "email": email,
+                "role": "authenticated",
+                "user_metadata": {
+                    "full_name": f"Mock {role.capitalize()} User",
+                },
+                "mock_role": role # custom attribute to pass mock role
+            }
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid mock token format. Use 'mock-UUID:role:email'"
+            )
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        phone: str = payload.get("sub")
-        role: str = payload.get("role", "customer")
-        if phone is None:
-            raise credentials_exception
-    except ExpiredSignatureError:
+        # Standard offline Supabase JWT Verification
+        payload = jwt.decode(
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience="authenticated"
+        )
+        return payload
+    except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Token has expired"
         )
-    except InvalidTokenError:
-        raise credentials_exception
-
-    # Check if user exists in the local database
-    user = db.query(Profile).filter(Profile.phone == phone).first()
-    if not user:
-        # Auto-sync/insert dynamically if they don't exist in local DB
-        # This occurs if it is their first time logging in or they logged in offline
-        # Determine role: if phone is an admin-specific phone (e.g. starting with +9199999 or ending with 0000), let's set role to admin, or default to payload role.
-        # Let's say +919999999999 or any phone ending with '0000' is an admin.
-        user_role = role
-        if phone in ["+919999999999", "9999999999", "8888888888"] or phone.endswith("0000"):
-            user_role = "admin"
-            
-        user = Profile(
-            phone=phone,
-            full_name=phone.split("@")[0] if "@" in phone else f"User {phone[-4:]}",
-            role=user_role,
-            avatar_url=f"https://api.dicebear.com/7.x/adventurer/svg?seed={phone}",
-            address="",
-            city="",
-            pincode=""
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
-    return user
-
-def require_admin(current_user: Profile = Depends(get_current_user)) -> Profile:
-    if current_user.role != "admin":
+    except jwt.InvalidTokenError as e:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin permissions required"
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}"
         )
-    return current_user
+
+
+def get_current_user(
+    payload: dict = Depends(get_token_payload),
+    db: Session = Depends(get_db)
+) -> Profile:
+    """
+    Dependency that extracts user info from JWT and synchronizes with local profiles table.
+    """
+    user_id_str = payload.get("sub")
+    email = payload.get("email")
+    
+    if not user_id_str or not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token payload missing required claims (sub, email)"
+        )
+        
+    try:
+        user_uuid = uuid.UUID(user_id_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user ID format in token"
+        )
+
+    # Check if profile already exists in DB
+    profile = db.query(Profile).filter(Profile.id == user_uuid).first()
+    
+    if not profile:
+        # User metadata
+        metadata = payload.get("user_metadata", {}) or {}
+        full_name = metadata.get("full_name") or metadata.get("name")
+        
+        # Decide role:
+        # 1. If mock_role is present, use it.
+        # 2. If it's the first profile created, make it admin.
+        # 3. If email matches 'admin@example.com' or 'admin@local.com', make it admin.
+        # 4. Otherwise, 'customer'.
+        role = "customer"
+        if "mock_role" in payload:
+            role = payload["mock_role"]
+        else:
+            total_profiles = db.query(Profile).count()
+            if total_profiles == 0 or email.startswith("admin@") or "admin" in email.split("@")[0]:
+                role = "admin"
+                
+        profile = Profile(
+            id=user_uuid,
+            email=email,
+            full_name=full_name,
+            role=role
+        )
+        db.add(profile)
+        try:
+            db.commit()
+            db.refresh(profile)
+        except Exception as e:
+            db.rollback()
+            # Double check if someone created it concurrently
+            profile = db.query(Profile).filter(Profile.id == user_uuid).first()
+            if not profile:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to synchronize profile: {str(e)}"
+                )
+
+    return profile
+
+
+def require_role(allowed_role: str):
+    """
+    RBAC dependency wrapper. Enforces user role membership.
+    Admins bypass all role requirements.
+    """
+    def role_dependency(current_user: Profile = Depends(get_current_user)):
+        if current_user.role != allowed_role and current_user.role != "admin":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied: Requires '{allowed_role}' privileges."
+            )
+        return current_user
+    return role_dependency

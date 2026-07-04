@@ -1,197 +1,245 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { ShoppingBag, ShoppingCart, User, Sun, Moon, LogOut, Menu, X, BarChart2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { 
-  ShoppingBag, 
-  Search, 
-  Sun, 
-  Moon, 
-  User, 
-  LayoutDashboard, 
-  LogOut,
-  MapPin
-} from 'lucide-react';
 
 export default function Navbar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { theme, setTheme, token, role, user, cart, logout } = useStore();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Sync search input with URL query param if on product list page
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const searchParam = params.get('search') || '';
-    if (location.pathname === '/products') {
-      setSearchQuery(searchParam);
-    } else {
-      setSearchQuery('');
-    }
-  }, [location]);
+  const user = useStore((state) => state.user);
+  const token = useStore((state) => state.token);
+  const clearAuth = useStore((state) => state.clearAuth);
+  const cart = useStore((state) => state.cart);
+  const darkMode = useStore((state) => state.darkMode);
+  const toggleTheme = useStore((state) => state.toggleTheme);
 
-  const handleSearchSubmit = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
-    } else {
-      navigate('/products');
-    }
+  const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+  const handleSignOut = () => {
+    clearAuth();
+    setMobileMenuOpen(false);
+    navigate('/');
   };
 
-  const toggleTheme = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light');
-  };
+  const isActive = (path) => location.pathname === path;
 
-  const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const navLinks = [
+    { name: 'Shop', path: '/products' },
+    ...(token ? [{ name: 'Orders', path: '/orders' }] : []),
+  ];
 
   return (
-    <header className="sticky top-0 z-50 w-full transition-all duration-200 glass bg-white/80 dark:bg-slate-900/80 border-b border-slate-200/50 dark:border-slate-800/50">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between gap-4">
+    <nav className="sticky top-0 z-50 glass-effect border-b border-slate-200/80 dark:border-slate-800/80 transition-all duration-300">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between h-16 items-center">
           
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 shrink-0 group">
-            <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 dark:bg-indigo-500 text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-transform duration-200">
-              {/* Location pin enclosing a shopping bag SVG */}
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                viewBox="0 0 24 24" 
-                fill="none" 
-                stroke="currentColor" 
-                strokeWidth="2.5" 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                className="h-6 w-6"
+          <div className="flex items-center">
+            <Link to="/" className="flex items-center gap-2 text-primary-600 dark:text-primary-400 font-extrabold text-xl tracking-tight">
+              <ShoppingBag className="w-6 h-6 stroke-[2.5]" />
+              <span>BlueCart</span>
+            </Link>
+          </div>
+
+          {/* Desktop Navigation Links */}
+          <div className="hidden md:flex items-center gap-6">
+            {navLinks.map((link) => (
+              <Link
+                key={link.path}
+                to={link.path}
+                className={`text-sm font-medium transition-colors ${
+                  isActive(link.path)
+                    ? 'text-primary-600 dark:text-primary-400'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400'
+                }`}
               >
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                <path d="M10 9a2 2 0 0 1 4 0v1h-4V9z" />
-                <rect x="9" y="10" width="6" height="4" rx="1" />
-              </svg>
-            </div>
-            <span className="font-display text-xl font-extrabold tracking-tight bg-gradient-to-r from-slate-900 to-indigo-600 dark:from-white dark:to-indigo-400 bg-clip-text text-transparent">
-              SmartBuy
-            </span>
-          </Link>
-
-          {/* Search bar */}
-          <form 
-            onSubmit={handleSearchSubmit} 
-            className="hidden sm:flex relative flex-1 max-w-md items-center"
-          >
-            <div className="relative w-full">
-              <input
-                type="text"
-                placeholder="Search fresh grocery, dairy, bakery..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 text-sm focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-950 dark:text-slate-100 outline-none transition-all duration-200"
-              />
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-slate-400 dark:text-slate-500" />
-            </div>
-            <button 
-              type="submit" 
-              className="absolute right-1 px-3 py-1 text-xs font-semibold rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400 dark:hover:bg-indigo-900 transition-colors"
-            >
-              Go
-            </button>
-          </form>
-
-          {/* Right actions */}
-          <div className="flex items-center gap-2 sm:gap-4">
+                {link.name}
+              </Link>
+            ))}
             
-            {/* Dark Mode Toggle */}
+            {/* Admin Dashboard link */}
+            {user?.role === 'admin' && (
+              <Link
+                to="/admin"
+                className={`flex items-center gap-1.5 text-sm font-semibold transition-colors px-3 py-1.5 rounded-xl ${
+                  isActive('/admin')
+                    ? 'bg-primary-50 dark:bg-primary-950/40 text-primary-600 dark:text-primary-400'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <BarChart2 size={16} />
+                <span>Admin Dashboard</span>
+              </Link>
+            )}
+          </div>
+
+          {/* Right Utility Buttons */}
+          <div className="hidden md:flex items-center gap-4">
+            {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/50 dark:border-slate-800/50 bg-slate-50/30 dark:bg-slate-950/30 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-850 hover:scale-105 transition-all duration-200 cursor-pointer"
-              aria-label="Toggle theme"
+              className="p-2 text-slate-500 hover:text-primary-600 dark:text-slate-400 dark:hover:text-primary-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-300"
+              aria-label="Toggle Theme"
             >
-              {theme === 'dark' ? <Sun className="h-5 w-5 text-amber-500" /> : <Moon className="h-5 w-5" />}
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
 
-            {/* Cart Icon Badge */}
+            {/* Cart Icon */}
             <Link
               to="/cart"
-              className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200/50 dark:border-slate-800/50 bg-slate-50/30 dark:bg-slate-950/30 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-850 hover:scale-105 transition-all duration-200"
+              className="relative p-2 text-slate-500 hover:text-primary-600 dark:text-slate-400 dark:hover:text-primary-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-300"
             >
-              <ShoppingBag className="h-5 w-5" />
-              {totalCartItems > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white ring-2 ring-white dark:ring-slate-900 animate-pulse">
-                  {totalCartItems}
+              <ShoppingCart size={20} />
+              {cartItemCount > 0 && (
+                <span className="absolute top-0.5 right-0.5 bg-primary-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-white dark:border-slate-900 animate-pulse">
+                  {cartItemCount}
                 </span>
               )}
             </Link>
 
-            {/* Auth / Menu Links */}
+            {/* User Controls */}
             {token ? (
-              <div className="flex items-center gap-2 border-l border-slate-250 dark:border-slate-800 pl-2 sm:pl-4">
-                
-                {/* Admin Dashboard button */}
-                {role === 'admin' && (
-                  <Link
-                    to="/admin"
-                    className="hidden md:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 border border-indigo-100/50 dark:border-indigo-950 transition-colors"
-                  >
-                    <LayoutDashboard className="h-3.5 w-3.5" />
-                    Dashboard
-                  </Link>
-                )}
-
-                {/* Profile Link */}
+              <div className="flex items-center gap-3">
                 <Link
                   to="/profile"
-                  className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-                  title="View Profile"
+                  className="flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400 px-3 py-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
                 >
-                  <img
-                    src={user?.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${user?.phone}`}
-                    alt="Avatar"
-                    className="h-8 w-8 rounded-full border border-slate-200 dark:border-slate-800 bg-slate-100"
-                  />
-                  <span className="hidden lg:inline text-sm font-medium text-slate-700 dark:text-slate-350 max-w-[100px] truncate">
-                    {user?.full_name || 'My Profile'}
-                  </span>
+                  <User size={18} />
+                  <span className="max-w-[120px] truncate">{user?.full_name || user?.email}</span>
                 </Link>
-
-                {/* Logout Button */}
                 <button
-                  onClick={logout}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:text-red-500 hover:bg-red-50/50 dark:hover:bg-red-950/30 transition-all duration-200 cursor-pointer"
-                  title="Logout"
+                  onClick={handleSignOut}
+                  className="p-2 text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-950/40 transition-all duration-300"
+                  title="Sign Out"
                 >
-                  <LogOut className="h-4.5 w-4.5" />
+                  <LogOut size={18} />
                 </button>
-
               </div>
             ) : (
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/signin"
+                  className="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400 px-3 py-2"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  to="/signup"
+                  className="bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium px-4 py-2 rounded-xl transition-all hover:shadow-lg hover:shadow-primary-500/20 active:scale-98"
+                >
+                  Sign Up
+                </Link>
+              </div>
+            )}
+          </div>
+
+          {/* Mobile Menu Hamburger */}
+          <div className="flex items-center gap-2 md:hidden">
+            {/* Theme Toggle */}
+            <button
+              onClick={toggleTheme}
+              className="p-2 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+
+            {/* Cart Icon */}
+            <Link
+              to="/cart"
+              className="relative p-2 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <ShoppingCart size={20} />
+              {cartItemCount > 0 && (
+                <span className="absolute top-0.5 right-0.5 bg-primary-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-white dark:border-slate-900">
+                  {cartItemCount}
+                </span>
+              )}
+            </Link>
+
+            {/* Burger */}
+            <button
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="p-2 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      {/* Mobile Drawer Menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden glass-effect border-b border-slate-200 dark:border-slate-800 animate-slideDown">
+          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+            {navLinks.map((link) => (
               <Link
-                to="/auth"
-                className="inline-flex h-9 items-center justify-center rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 text-xs font-semibold text-white shadow-sm hover:scale-102 hover:shadow-indigo-500/20 active:scale-98 transition-all duration-200"
+                key={link.path}
+                to={link.path}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`block px-3 py-2 rounded-xl text-base font-medium ${
+                  isActive(link.path)
+                    ? 'bg-primary-50 dark:bg-primary-950/20 text-primary-600 dark:text-primary-400'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
               >
-                Sign In
+                {link.name}
+              </Link>
+            ))}
+            
+            {user?.role === 'admin' && (
+              <Link
+                to="/admin"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`block px-3 py-2 rounded-xl text-base font-semibold ${
+                  isActive('/admin')
+                    ? 'bg-primary-50 dark:bg-primary-950/20 text-primary-600 dark:text-primary-400'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                Admin Dashboard
               </Link>
             )}
 
+            {token ? (
+              <>
+                <Link
+                  to="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-3 py-2 rounded-xl text-base font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  My Profile ({user?.full_name || user?.email})
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="w-full text-left block px-3 py-2 rounded-xl text-base font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20"
+                >
+                  Sign Out
+                </button>
+              </>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 pt-2 px-3">
+                <Link
+                  to="/signin"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-center px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-850"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  to="/signup"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-center px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-medium shadow-sm"
+                >
+                  Sign Up
+                </Link>
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Mobile Search Bar Row */}
-        <div className="sm:hidden pb-3">
-          <form onSubmit={handleSearchSubmit} className="relative flex w-full items-center">
-            <input
-              type="text"
-              placeholder="Search products..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-9 pl-9 pr-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 text-xs focus:border-indigo-500 focus:bg-white outline-none transition-all duration-200 dark:text-slate-100"
-            />
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-            <button type="submit" className="absolute right-1 px-2.5 py-0.5 text-[10px] font-bold rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
-              Search
-            </button>
-          </form>
-        </div>
-
-      </div>
-    </header>
+      )}
+    </nav>
   );
 }

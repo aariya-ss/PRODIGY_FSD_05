@@ -1,72 +1,86 @@
-# SmartBuy E-Commerce
+# PRODIGY_FSD_05
 
-This repository contains a local e-commerce application built with:
-- Backend: FastAPI
-- Frontend: React + Vite
-- Database: SQLite
+A full-stack local e-commerce platform built with React, Vite, FastAPI, and SQLAlchemy. The project includes a customer-facing storefront, cart and checkout flows, profile and order management, and an admin dashboard for product control.
 
-## Project structure
+## Overview
 
-- `backend/` - FastAPI backend with API routes, authentication, and database models
-- `frontend/` - React client application using Vite
-- `local_ecommerce.db` - Local SQLite database file
+This repository contains:
+- A React frontend built with Vite and React Router
+- A FastAPI backend with REST endpoints for products, orders, and profiles
+- SQLAlchemy models and SQLite-based local development database support
+- Supabase-auth-inspired client integration for sign-in and protected routes
 
-## Requirements
+## Project Structure
 
-- Python 3.11+ (or compatible)
-- Node.js 18+ and npm
+- frontend/: Vite + React application
+- backend/: FastAPI server, routes, models, schemas, and database setup
 
-## Backend setup
+## Features
 
-1. Navigate to the backend folder:
-   ```bash
-   cd backend
-   ```
-2. Create and activate a Python virtual environment:
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\activate
-   ```
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Start the backend server:
-   ```bash
-   uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-   ```
+- Product listing and product detail pages
+- Shopping cart and checkout experience
+- Order history and user profile pages
+- Admin dashboard for managing products
+- REST API with search, filtering, sorting, and pagination for products
 
-The backend will seed sample products and an admin user at startup if the database is empty.
+## Tech Stack
 
-## Frontend setup
+### Frontend
+- React
+- Vite
+- React Router
+- Tailwind CSS
+- Zustand
+- Axios
 
-1. Navigate to the frontend folder:
-   ```bash
-   cd frontend
-   ```
-2. Install npm dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the frontend development server:
-   ```bash
-   npm run dev
-   ```
+### Backend
+- FastAPI
+- SQLAlchemy
+- Pydantic
+- Uvicorn
+- SQLite for development
 
-The frontend expects the backend API to be available on `http://localhost:8000`.
+## Getting Started
 
-## Local admin login
+### Prerequisites
+- Node.js 18+
+- Python 3.10+
+- pip
 
-The backend seeds an initial admin user with phone number:
-- `+919999999999`
+### Frontend Setup
 
-Use this account to access any admin functionality in the app.
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-## Notes
+The frontend will run at http://localhost:5173.
 
-- If you want to avoid committing dependencies in the future, add a `.gitignore` file and exclude `frontend/node_modules/` and the SQLite database file.
-- The backend exposes API routes under `/api`.
+### Backend Setup
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
+```
+
+The API will run at http://127.0.0.1:8000 and the documentation at http://127.0.0.1:8000/docs.
+
+## API Notes
+
+The backend exposes endpoints under `/api` for:
+- Products
+- Orders
+- Profile management
+
+## Development Notes
+
+- The backend creates database tables automatically on startup for local development.
+- The app is designed to be extended with PostgreSQL or Supabase production settings in the future.
 
 ## License
 
-This repository does not include a license file. Add one if you want to publish the project publicly.
+This project is intended for educational and portfolio demonstration purposes.

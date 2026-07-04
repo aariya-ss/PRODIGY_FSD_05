@@ -1,14 +1,16 @@
 import axios from 'axios';
 import { useStore } from '../store/useStore';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Request interceptor to dynamically inject the JWT token
+// Request Interceptor: Inject JWT token into headers
 api.interceptors.request.use(
   (config) => {
     const token = useStore.getState().token;
@@ -22,16 +24,13 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor to handle token expiry / unauthorized requests
+// Response Interceptor: Catch 401 errors to clear session
 api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
+  (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Token is invalid or expired, clear session and log user out
-      console.warn('Unauthorized request detected. Logging out user...');
-      useStore.getState().logout();
+      // Token expired or invalid, sign out user locally
+      useStore.getState().clearAuth();
     }
     return Promise.reject(error);
   }

@@ -1,19 +1,20 @@
 import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 
-export const AdminRoute = ({ children }) => {
+export default function AdminRoute({ children }) {
   const token = useStore((state) => state.token);
-  const role = useStore((state) => state.role);
+  const user = useStore((state) => state.user);
+  const location = useLocation();
 
   if (!token) {
-    return <Navigate to="/auth" replace />;
+    return <Navigate to="/signin" state={{ from: location }} replace />;
   }
 
-  if (role !== 'admin') {
-    // If authenticated but not admin, redirect to landing
+  if (user?.role !== 'admin') {
+    // Not an admin, redirect to landing
     return <Navigate to="/" replace />;
   }
 
-  return children ? children : <Outlet />;
-};
+  return children;
+}

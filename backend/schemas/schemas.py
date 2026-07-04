@@ -1,55 +1,41 @@
-import uuid
-from pydantic import BaseModel, Field
-from typing import List, Optional
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from uuid import UUID
 from datetime import datetime
+from typing import List, Optional
+from decimal import Decimal
 
-# Auth Schemas
-class OTPRequest(BaseModel):
-    phone: str = Field(..., description="Phone number to request OTP for")
-
-class OTPVerify(BaseModel):
-    phone: str = Field(..., description="Phone number")
-    code: str = Field(..., description="6-digit verification code")
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    role: str
-
-class TokenData(BaseModel):
-    phone: Optional[str] = None
-    role: Optional[str] = None
-
-# Profile Schemas
+# --- PROFILE SCHEMAS ---
 class ProfileBase(BaseModel):
     full_name: Optional[str] = None
-    avatar_url: Optional[str] = None
+    phone: Optional[str] = None
     address: Optional[str] = None
-    city: Optional[str] = None
-    pincode: Optional[str] = None
+
+class ProfileCreate(ProfileBase):
+    id: UUID
+    email: EmailStr
+    role: Optional[str] = "customer"
 
 class ProfileUpdate(ProfileBase):
     pass
 
-class ProfileRead(ProfileBase):
-    id: uuid.UUID
-    phone: str
+class ProfileResponse(ProfileBase):
+    id: UUID
+    email: EmailStr
     role: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
-# Product Schemas
+
+# --- PRODUCT SCHEMAS ---
 class ProductBase(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
-    price: float
-    original_price: float
+    price: Decimal = Field(..., gt=0)
+    category: str = Field(..., min_length=1)
+    stock: int = Field(..., ge=0)
     image_url: Optional[str] = None
-    category: str
-    stock: int
-    featured: bool = False
+    featured: Optional[bool] = False
 
 class ProductCreate(ProductBase):
     pass
@@ -57,63 +43,51 @@ class ProductCreate(ProductBase):
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    price: Optional[float] = None
-    original_price: Optional[float] = None
-    image_url: Optional[str] = None
+    price: Optional[Decimal] = None
     category: Optional[str] = None
     stock: Optional[int] = None
+    image_url: Optional[str] = None
     featured: Optional[bool] = None
 
-class ProductRead(ProductBase):
-    id: uuid.UUID
+class ProductResponse(ProductBase):
+    id: UUID
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
-# Order Item Schemas
+class ProductListResponse(BaseModel):
+    items: List[ProductResponse]
+    total: int
+    page: int
+    size: int
+    pages: int
+
+
+# --- ORDER ITEM SCHEMAS ---
 class OrderItemCreate(BaseModel):
-    product_id: uuid.UUID
+    product_id: UUID
+    quantity: int = Field(..., gt=0)
+
+class OrderItemResponse(BaseModel):
+    id: UUID
+    product_id: Optional[UUID] = None
+    product_name: Optional[str] = None
     quantity: int
+    price_at_purchase: Decimal
 
-class OrderItemRead(BaseModel):
-    id: uuid.UUID
-    product_id: uuid.UUID
-    quantity: int
-    price_at_purchase: float
-    product: Optional[ProductRead] = None
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
 
-# Order Schemas
+# --- ORDER SCHEMAS ---
 class OrderCreate(BaseModel):
-    delivery_address: str
-    contact_phone: str
     items: List[OrderItemCreate]
 
-class OrderRead(BaseModel):
-    id: uuid.UUID
-    user_id: uuid.UUID
+class OrderResponse(BaseModel):
+    id: UUID
+    user_id: UUID
+    total_amount: Decimal
     status: str
-    total_amount: float
-    delivery_address: str
-    contact_phone: str
     created_at: datetime
-    items: List[OrderItemRead]
+    items: List[OrderItemResponse]
 
-    class Config:
-        from_attributes = True
-
-# Dashboard Stats Schemas
-class OrderAlert(BaseModel):
-    product_id: uuid.UUID
-    name: str
-    stock: int
-
-class AdminStats(BaseModel):
-    total_sales: float
-    total_orders: int
-    active_inventory_count: int
-    stock_alerts: List[OrderAlert]
-    recent_orders: List[OrderRead]
+    model_config = ConfigDict(from_attributes=True)

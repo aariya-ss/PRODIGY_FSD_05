@@ -1,110 +1,129 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 
-export const useStore = create(
-  persist(
-    (set, get) => ({
-      // Theme State
-      theme: 'light',
-      setTheme: (newTheme) => {
-        set({ theme: newTheme });
-        if (newTheme === 'dark') {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
-      },
+export const useStore = create((set, get) => {
+  // Read initial states from localStorage
+  const storedTheme = localStorage.getItem('theme');
+  const initialDarkMode = storedTheme === 'dark' || (!storedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  
+  // Apply initial theme class to HTML/Body
+  if (initialDarkMode) {
+    document.documentElement.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+  }
 
-      // Auth State
-      token: null,
-      role: 'customer',
-      user: null,
-      setAuth: (token, role) => set({ token, role }),
-      setUser: (user) => set({ user }),
-      logout: () => {
-        set({ token: null, role: 'customer', user: null, cart: [] });
-        localStorage.removeItem('smartbuy-storage');
-      },
+  const storedCart = localStorage.getItem('cart');
+  const initialCart = storedCart ? JSON.parse(storedCart) : [];
 
-      // Cart State
-      cart: [],
-      addToCart: (product, quantity = 1) => {
-        const cart = get().cart;
-        const existingIndex = cart.findIndex(item => item.product.id === product.id);
-        
-        let newCart;
-        if (existingIndex >= 0) {
-          newCart = [...cart];
-          // Cap at product stock
-          const newQty = newCart[existingIndex].quantity + quantity;
-          newCart[existingIndex].quantity = Math.min(newQty, product.stock);
-        } else {
-          newCart = [...cart, { product, quantity: Math.min(quantity, product.stock) }];
-        }
-        
-        set({ cart: newCart });
-      },
-      updateCartQuantity: (productId, quantity) => {
-        const cart = get().cart;
-        if (quantity <= 0) {
-          set({ cart: cart.filter(item => item.product.id !== productId) });
-          return;
-        }
-        
-        const newCart = cart.map(item => {
-          if (item.product.id === productId) {
-            return { ...item, quantity: Math.min(quantity, item.product.stock) };
-          }
-          return item;
-        });
-        
-        set({ cart: newCart });
-      },
-      removeFromCart: (productId) => {
-        const cart = get().cart;
-        set({ cart: cart.filter(item => item.product.id !== productId) });
-      },
-      clearCart: () => set({ cart: [] }),
+  const storedToken = localStorage.getItem('auth_token');
+  const storedUser = localStorage.getItem('auth_user');
+  const initialToken = storedToken || null;
+  const initialUser = storedUser ? JSON.parse(storedUser) : null;
 
-      // Formatting & Calculations helpers
-      formatRupees: (amount) => {
-        return new Intl.NumberFormat('en-IN', {
-          style: 'currency',
-          currency: 'INR',
-          maximumFractionDigits: 0
-        }).format(amount);
-      },
-
-      getCartSubtotal: () => {
-        const cart = get().cart;
-        return cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-      },
-
-      getDeliveryFee: () => {
-        const subtotal = get().getCartSubtotal();
-        if (subtotal === 0) return 0;
-        return subtotal >= 500 ? 0 : 40; // Flat ₹40 delivery, free above ₹500
-      },
-
-      getGrandTotal: () => {
-        return get().getCartSubtotal() + get().getDeliveryFee();
-      },
-
-      getAmtNeededForFreeDelivery: () => {
-        const subtotal = get().getCartSubtotal();
-        if (subtotal === 0) return 500;
-        return Math.max(0, 500 - subtotal);
+  return {
+    // --- THEME STATE ---
+    darkMode: initialDarkMode,
+    toggleTheme: () => {
+      const nextMode = !get().darkMode;
+      localStorage.setItem('theme', nextMode ? 'dark' : 'light');
+      if (nextMode) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
       }
-    }),
-    {
-      name: 'smartbuy-storage', // name of item in localStorage
-      partialize: (state) => ({
-        theme: state.theme,
-        token: state.token,
-        role: state.role,
-        user: state.user,
-        cart: state.cart
-      }),
-    }
-  )
-);
+      set({ darkMode: nextMode });
+    },
+
+    // --- AUTH STATE ---
+    user: initialUser,
+    token: initialToken,
+    setAuth: (user, token) => {
+      localStorage.setItem('auth_token', token);
+      localStorage.setItem('auth_user', JSON.stringify(user));
+      set({ user, token });
+    },
+    clearAuth: () => {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_user');
+      set({ user: null, token: null });
+    },
+
+    // --- CART STATE ---
+    cart: initialCart,
+    addToCart: (product, quantity = 1) => {
+      const currentCart = get().cart;
+      const existingItem = currentCart.find((item) => item.id === product.id);
+      
+      let updatedCart;
+      if (existingItem) {
+        // Enforce stock limits
+        const newQty = existingItem.quantity + quantity;
+        if (newQty > product.stock) {
+          throw new Error(`Cannot add more than available stock (${product.stock} items available)`);
+        }
+        updatedCart = currentCart.map((item) =>
+          item.id === product.id ? { ...item, quantity: newQty } : item
+        );
+      } else {
+        if (quantity > product.stock) {
+          throw new Error(`Cannot add more than available stock (${product.stock} items available)`);
+        }
+        updatedCart = [...currentCart, { ...product, quantity }];
+      }
+
+      localStorage.setItem('cart', JSON.stringify(updatedCart));
+      set({ cart: updatedCart });
+    },
+    removeFromCart: (productId) => {
+      const updatedCart = get().cart.filter((item) => item.id !== productId);
+      localStorage.setItem('cart', JSON.stringify(updatedCart));
+      set({ cart: updatedCart });
+    },
+    updateQuantity: (productId, quantity) => {
+      if (quantity <= 0) {
+        get().removeFromCart(productId);
+        return;
+      }
+      
+      const currentCart = get().cart;
+      const updatedCart = currentCart.map((item) => {
+        if (item.id === productId) {
+          if (quantity > item.stock) {
+            throw new Error(`Cannot add more than available stock (${item.stock} items available)`);
+          }
+          return { ...item, quantity };
+        }
+        return item;
+      });
+
+      localStorage.setItem('cart', JSON.stringify(updatedCart));
+      set({ cart: updatedCart });
+    },
+    clearCart: () => {
+      localStorage.removeItem('cart');
+      set({ cart: [] });
+    },
+
+    // --- CART CALCULATIONS ---
+    getCartSubtotal: () => {
+      return get().cart.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0);
+    },
+    getCartTax: () => {
+      return get().getCartSubtotal() * 0.08; // 8% sales tax
+    },
+    getCartDelivery: () => {
+      const subtotal = get().getCartSubtotal();
+      if (subtotal === 0) return 0;
+      return subtotal >= 100 ? 0 : 5.00; // Free delivery for orders $100+
+    },
+    getCartTotal: () => {
+      return get().getCartSubtotal() + get().getCartTax() + get().getCartDelivery();
+    },
+
+    // --- DATA STATE ---
+    products: [],
+    setProducts: (products) => set({ products }),
+    orders: [],
+    setOrders: (orders) => set({ orders }),
+  };
+});
